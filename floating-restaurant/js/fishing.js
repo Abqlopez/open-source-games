@@ -1,167 +1,16 @@
-// Fishing: the cast -> bite -> reel rig (shared by the morning and by live
-// catches off the dining deck), plus the morning Fishing screen.
+// Morning (v2): steer the boat around a top-down sea, read the signs on the
+// water to find fish, pick the right gear and bait, and win the fight.
 (function () {
-  const U = FR.ui, D = FR.DATA, C = D.config;
+  const U = FR.ui, D = FR.DATA, C = D.config, J = FR.juice;
 
-  FR.pickFish = function (zone, o) {
-    const S = FR.state;
-    const w = Object.assign({}, D.zones[zone], (D.areas[S.area].zones || {})[zone] || {});
-    for (const id in w) {
-      const f = D.fish[id];
-      if (o.night && f.nightBoost) w[id] *= f.nightBoost;
-      if (f.rarity === 'rare' || f.rarity === 'legendary') {
-        if (o.bait) w[id] *= C.baitBoost;
-        if (o.spot) w[id] *= C.spotBoost;
-      }
-    }
-    return FR.weighted(w);
-  };
-
-  FR.rodMods = function () {
-    const lvl = FR.state.upgrades.rod;
-    return { ease: 1 + C.rodEase * lvl, line: C.baseLineStrength + lvl, reach: C.rodReach[lvl] };
-  };
-
-  FR.FishingRig = class {
-    // o: tipX, tipY, waterY, castMinX, castMaxX, hintX, hintY, depth, night, quick,
-    //    canFish(), bait(), spot(), onCatch(id, cut, count), onFail(msg), onInfo(msg)
-    constructor(scene, o) {
-      this.s = scene; this.o = o;
-      const d = o.depth || 20;
-      this.d = d;
-      this.state = 'idle'; this.t = 0;
-      this.g = scene.add.graphics().setDepth(d);
-      this.bobber = scene.add.image(0, 0, 'bobber').setOrigin(0.5, 0.6).setDepth(d + 1).setVisible(false);
-      this.bang = U.title(scene, 0, 0, '!', 54, '#ffe14d')
-        .setOrigin(0.5).setDepth(d + 2).setVisible(false);
-      this.hint = U.text(scene, o.hintX, o.hintY, '', 15, '#ffffff', { backgroundColor: '#2b2140dd', padding: { x: 12, y: 6 } })
-        .setOrigin(0.5).setDepth(d + 2);
-      this.pbar = U.bar(scene, o.tipX - 50, o.tipY - 34, 100, 12, 0xffc93c);
-      this.pbar.objs.forEach(x => x.setDepth(d + 2).setVisible(false));
-    }
-    busy() { return ['flying', 'bite', 'reel'].includes(this.state); }
-    setHint(m) { if (this.hint.text !== m) this.hint.setText(m); this.hint.setVisible(!!m); }
-    rest() {
-      this.bobber.setVisible(false); this.bang.setVisible(false);
-      this.pbar.objs.forEach(x => x.setVisible(false));
-      this.state = 'rest'; this.restT = 0.7; this.setHint('');
-    }
-    zoneOf(f) { return f < C.zoneEdges.near ? 'near' : f < C.zoneEdges.mid ? 'mid' : 'far'; }
-
-    startReel() {
-      const o = this.o;
-      const id = FR.pickFish(this.zone, { night: o.night, bait: o.bait && o.bait(), spot: o.spot && o.spot() });
-      const fish = D.fish[id];
-      this.fishId = id;
-      this.setHint('');
-      if (FR.dev.auto) { this.rest(); o.onCatch(id, 'perfect', fish.reel.type === 'school' ? 3 : 1); return; }
-      this.panel = U.panel(this.s, 560, 250, fish.name, this.d + 30);
-      this.panel.add(U.text(this.s, 0, -80, fish.reel.hint, 13, '#ffffff').setOrigin(0.5));
-      this.panel.add(this.s.add.image(0, 22, 'reelbg'));
-      this.game = new FR.Reel[fish.reel.type](this.s, this.panel, fish, FR.rodMods());
-      this.state = 'reel';
-    }
-
-    update(dt, inp) {
-      const o = this.o;
-      this.t += dt;
-      this.g.clear();
-      if (this.bobber.visible) {
-        this.g.lineStyle(2, 0xfff6d6, 0.9);
-        this.g.lineBetween(o.tipX, o.tipY, this.bobber.x, this.bobber.y);
-      }
-      switch (this.state) {
-        case 'idle':
-          if (!o.canFish()) { this.setHint('The fish tank is full!'); return; }
-          this.setHint('Hold SPACE to charge your cast, release to throw');
-          if (inp.just) {
-            this.state = 'charging'; this.power = 0; this.pdir = 1;
-            this.pbar.objs.forEach(x => x.setVisible(true));
-          }
-          break;
-        case 'charging':
-          this.power += this.pdir * dt * 1.2;
-          if (this.power >= 1) { this.power = 1; this.pdir = -1; }
-          if (this.power <= 0) { this.power = 0; this.pdir = 1; }
-          this.pbar.set(this.power);
-          this.setHint('Release to cast! More power = farther = rarer fish');
-          if (!inp.down) {
-            this.pbar.objs.forEach(x => x.setVisible(false));
-            this.f = Math.max(0.08, this.power * FR.rodMods().reach);
-            this.tx = o.castMinX + this.f * (o.castMaxX - o.castMinX);
-            this.zone = this.zoneOf(this.f);
-            this.ft = 0; this.state = 'flying';
-            this.bobber.setVisible(true).setPosition(o.tipX, o.tipY);
-          }
-          break;
-        case 'flying': {
-          this.ft += dt / 0.45;
-          const k = Math.min(1, this.ft);
-          this.bobber.setPosition(o.tipX + (this.tx - o.tipX) * k, o.tipY + (o.waterY - o.tipY) * k - Math.sin(Math.PI * k) * 70);
-          if (k >= 1) {
-            this.state = 'waiting';
-            this.wait = FR.rand(C.biteWait[0], C.biteWait[1]) * (o.quick ? 0.45 : 1) * (o.spot && o.spot() ? 0.6 : 1);
-            FR.sfx('blip');
-          }
-          break;
-        }
-        case 'waiting':
-          this.wait -= dt;
-          this.bobber.y = o.waterY + Math.sin(this.t * 4) * 2;
-          this.setHint(`Line is in ${this.zone} water… wait for the bite`);
-          if (inp.just) { this.rest(); if (o.onInfo) o.onInfo('Too early! You scared the fish off.'); return; }
-          if (this.wait <= 0) {
-            this.state = 'bite'; this.biteT = C.biteWindow;
-            this.bang.setVisible(true).setPosition(this.bobber.x, this.bobber.y - 46);
-            FR.sfx('bite');
-          }
-          break;
-        case 'bite':
-          this.biteT -= dt;
-          this.bobber.y = o.waterY + 9;
-          this.setHint('NOW! Press SPACE!');
-          if (inp.just) { this.bang.setVisible(false); this.startReel(); }
-          else if (this.biteT <= 0) { this.rest(); o.onFail('Too slow. The fish escaped.'); }
-          return;
-        case 'reel': {
-          const r = this.game.update(dt, inp);
-          if (r) {
-            const id = this.fishId;
-            this.panel.destroy(); this.panel = null; this.game = null;
-            this.rest();
-            if (r.caught) o.onCatch(id, r.cut, r.count || 1);
-            else o.onFail(r.msg || 'It got away!');
-          }
-          return;
-        }
-        case 'rest':
-          this.restT -= dt;
-          if (this.restT <= 0) this.state = 'idle';
-          break;
-      }
-    }
-
-    destroy() {
-      [this.g, this.bobber, this.bang, this.hint, this.pbar.bg, this.pbar.fill].forEach(x => x.destroy());
-      if (this.panel) this.panel.destroy();
-    }
-  };
-
-  // Side view of the boat, used on the title and fishing screens.
+  // ---- side-view sea and boat, still used by the title screen ----
   FR.drawBoat = function (s, x, y) {
     const S = FR.state || FR.newState();
     const boat = s.add.image(x, y, 'boat_' + S.theme).setOrigin(0.5, 150 / 190).setDepth(5);
     s.tweens.add({ targets: boat, angle: { from: -0.8, to: 0.8 }, duration: 2600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    if (S.decor.sign) {
-      s.add.image(x - 30, y - 112, 'plank').setScale(0.62).setDepth(6);
-      U.text(s, x - 30, y - 112, 'FLOATING RESTAURANT', 10, '#ffe9a8', { fontStyle: 'bold' }).setOrigin(0.5).setDepth(6);
-    }
     if (S.decor.lanterns) [-88, -40, 8].forEach(dx => s.add.image(x + dx, y - 62, 'lantern').setScale(0.7).setDepth(6));
     if (S.decor.plants) [-118, 118].forEach(dx => s.add.image(x + dx, y - 44, 'plant').setScale(0.7).setDepth(6));
-    return { tipX: x + 100, tipY: y - 92 };
   };
-
-  // Sky, drifting clouds, water and a scrolling wave line. Returns the wave strip to animate.
   FR.drawSea = function (s, areaId) {
     FR.art.build(s);
     s.add.image(480, 170, 'sky_' + areaId);
@@ -170,118 +19,284 @@
       s.tweens.add({ targets: cl, x: x + 60, duration: 16000 + i * 5000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     });
     s.add.image(480, 455, 'water_' + areaId);
-    // fish shadows drifting under the surface
-    ['sardine', 'glowgill', 'bluefin_tuna', 'sardine'].forEach((id, i) => {
-      const f = s.add.image(-80, 380 + i * 48, 'fish_' + id).setScale(0.5 + (i % 2) * 0.2).setTintFill(0x0a2a4a).setAlpha(0.28);
-      s.tweens.add({ targets: f, x: 1040, duration: 14000 + i * 4000, delay: i * 3000, repeat: -1 });
-    });
     const wave = s.add.tileSprite(480, 312, 960, 18, 'wave').setDepth(7);
     const wave2 = s.add.tileSprite(480, 330, 960, 18, 'wave').setDepth(1).setAlpha(0.4);
     return { update(dt) { wave.tilePositionX += dt * 26; wave2.tilePositionX -= dt * 14; } };
+  };
+
+  FR.pickNightFish = () => FR.weighted(D.areas[FR.state.area].night);
+
+  // Shared by the morning and the deck rod at night: put a caught fish in the
+  // tank, write it in the journal, and say what happened.
+  FR.landFish = function (scene, id, cut, lucky, count) {
+    const S = FR.state, f = D.fish[id];
+    let n = 0, size = 'normal', notes = [];
+    for (let i = 0; i < (count || 1) && S.tank.length < FR.tankCap(); i++) {
+      size = f.boss ? 'trophy' : FR.rollSize(lucky);
+      FR.addFish(id, cut, size);
+      const j = FR.logCatch(id, size);
+      if (j.first) notes.push(`New in your journal! +$${j.reward}`);
+      if (j.complete) notes.push(`${j.complete} journal complete! +$${C.journalComplete}`);
+      n++;
+    }
+    if (!n) { U.toast(scene, 'The tank is full, so you let it go.', '#ffe9a8'); return null; }
+    const sizeTxt = n > 1 ? ` ×${n}` : size !== 'normal' ? ` (${D.sizes[size].name}${D.sizes[size].portions > 1 && !f.boss ? ', feeds ' + D.sizes[size].portions : ''})` : '';
+    const cutTxt = cut === 'perfect' ? ' — clean catch!' : cut === 'bruised' ? ' — bruised.' : '';
+    U.toast(scene, `Caught ${f.name}${sizeTxt}${cutTxt}${notes.length ? '\n' + notes.join('  ') : ''}`, cut === 'bruised' ? '#ffe9a8' : '#9cffb0');
+    FR.sfx(size === 'trophy' || cut === 'perfect' ? 'perfect' : 'good');
+    if (size === 'trophy' && !f.boss) J.pop(scene, 480, 250, 'TROPHY CATCH!', '#ffe14d', 44);
+    else if (cut === 'perfect') J.pop(scene, 480, 250, 'PERFECT!', '#9cffb0', 40);
+    return size;
   };
 
   class FishingScene extends Phaser.Scene {
     constructor() { super('Fishing'); }
 
     create() {
-      const S = FR.state, area = D.areas[S.area];
+      const S = FR.state;
+      FR.art.build(this);
       this.inp = FR.makeInput(this);
       this.timeLeft = C.morningSeconds;
-      this.finished = false;
-
-      this.sea = FR.drawSea(this, S.area);
-
-      const minX = 290, maxX = 930, range = maxX - minX;
-      const edges = [0, C.zoneEdges.near, C.zoneEdges.mid, 1];
-      ['NEAR', 'MID', 'FAR — rare fish'].forEach((name, i) => {
-        const x0 = minX + edges[i] * range, x1 = minX + edges[i + 1] * range;
-        if (i > 0) {
-          const bu = this.add.image(x0, 306, 'buoy').setDepth(8);
-          this.tweens.add({ targets: bu, y: 310, angle: { from: -6, to: 6 }, duration: 1500 + i * 300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        }
-        U.text(this, (x0 + x1) / 2, 346, name, 13, '#ffffff', { fontStyle: 'bold' }).setOrigin(0.5).setAlpha(0.75);
-      });
-
-      const tip = FR.drawBoat(this, 150, 300);
+      this.finished = false; this.cast = null; this.fight = null; this.target = null; this.wakeT = 0;
+      this.add.image(480, 300, 'seatop_' + S.area);
+      this.shimmer = this.add.tileSprite(480, 318, 960, 564, 'wave').setAlpha(0.1).setTileScale(2, 3);
       this.hud = U.hud(this, 'Morning');
+      this.boat = this.add.image(480, 330, 'boattop_' + S.theme).setDepth(50);
+      this.bang = U.title(this, 0, 0, '!', 56, '#ffe14d').setOrigin(0.5).setDepth(60).setVisible(false);
+      this.bobber = this.add.image(0, 0, 'bobber').setDepth(49).setVisible(false);
+      this.lineG = this.add.graphics().setDepth(48);
+      this.prompt = U.text(this, 480, 500, '', 15, '#ffffff', { backgroundColor: '#2b2140dd', padding: { x: 12, y: 6 }, align: 'center' }).setOrigin(0.5).setDepth(100);
 
-      this.rig = new FR.FishingRig(this, {
-        tipX: tip.tipX, tipY: tip.tipY, waterY: 312, castMinX: minX, castMaxX: maxX,
-        hintX: 480, hintY: 566, night: false,
-        canFish: () => S.tank.length < FR.tankCap(),
-        bait: () => S.baitActive,
-        spot: () => S.spot && S.useSpot,
-        onCatch: (id, cut, count) => this.caught(id, cut, count),
-        onFail: msg => { FR.sfx('bad'); U.toast(this, msg, '#ff9c9c'); },
-        onInfo: msg => U.toast(this, msg, '#ffe9a8')
+      this.spots = []; this.traps = [];
+      for (let i = 0; i < C.spotCount; i++) this.spawnSpot();
+      if (D.areas[S.area].boss && S.day >= C.bossFromDay && !S.bossBeaten) this.spawnSpot(D.areas[S.area].boss);
+
+      this.bar = this.add.container(0, 0).setDepth(200);
+      this.drawBar();
+      this.input.keyboard.on('keydown', ev => {
+        const owned = Object.keys(D.gear).filter(g => S.gear[g]);
+        const n = Number(ev.key);
+        if (n >= 1 && n <= owned.length && !this.cast && !this.fight) { S.useGear = owned[n - 1]; this.drawBar(); }
+        if (ev.code === 'KeyQ') this.nextBait();
+        if (ev.code === 'KeyT') this.dropTrap();
       });
-
-      this.btns = this.add.container(0, 0).setDepth(30);
-      this.tankRow = this.add.container(0, 0).setDepth(30);
-      this.drawButtons();
-      this.drawTank();
-      this.inp.addActionButton(895, 505);
+      U.button(this, 868, 62, 164, 32, 'Finish morning ▶', () => this.finish(), { color: 0x3f8f4f }).setDepth(200);
+      this.inp.addActionButton(905, 480);
+      if (S.day === 1) U.toast(this, 'Steer with WASD or arrows. Sail to a sign on the water and press SPACE to cast.', '#ffe9a8');
     }
 
-    drawButtons() {
+    // ---------- gear / bait bar ----------
+    drawBar() {
       const S = FR.state;
-      this.btns.removeAll(true);
-      this.btns.add(U.button(this, 870, 62, 160, 32, 'Finish morning ▶', () => this.finish(), { color: 0x3f8f4f }));
-      if (S.baitActive) this.btns.add(U.button(this, 690, 62, 170, 32, 'Bait is on the hook', () => {}, { enabled: false }));
-      else if (S.bait > 0) {
-        this.btns.add(U.button(this, 690, 62, 170, 32, `Use bait (${S.bait} left)`, () => {
-          S.bait--; S.baitActive = true;
-          U.toast(this, 'Bait on! Better odds of rare fish this morning.', '#9cffb0');
-          this.drawButtons();
-        }));
-      }
-      if (S.spot) {
-        this.btns.add(U.button(this, 500, 62, 190, 32, S.useSpot ? 'Spot: Sunken Reef ✓' : 'Spot: open water', () => {
-          S.useSpot = !S.useSpot;
-          U.toast(this, S.useSpot ? 'Sunken Reef: faster bites, more rare fish.' : 'Back to open water.', '#ffe9a8');
-          this.drawButtons();
-        }, { color: 0x7a4e9c }));
-      }
-    }
-
-    drawTank() {
-      const S = FR.state;
-      this.tankRow.removeAll(true);
-      this.tankRow.add(U.card(this, 130, 492, 240, 150, 0x1d3557, 0.85));
-      this.tankRow.add(U.text(this, 24, 426, `Fish tank  ${S.tank.length}/${FR.tankCap()}`, 15, '#ffe9a8', { fontStyle: 'bold' }));
-      S.tank.forEach((f, i) => {
-        const x = 44 + (i % 5) * 43, y = 462 + Math.floor(i / 5) * 22;
-        const im = this.add.image(x, y, 'fish_' + f.id).setScale(0.32);
-        if (FR.freshness(f) === 'ok') im.setTint(0xc9b98a);
-        this.tankRow.add(im);
+      this.bar.removeAll(true);
+      this.bar.add(U.card(this, 480, 566, 940, 56, 0x1d3557, 0.92));
+      Object.keys(D.gear).filter(g => S.gear[g]).forEach((g, i) => {
+        const on = S.useGear === g;
+        this.bar.add(U.button(this, 84 + i * 128, 566, 122, 34, `${i + 1}  ${D.gear[g].name}`, () => { S.useGear = g; this.drawBar(); }, { color: on ? 0xe07a2f : 0x2f6f8f, size: 12, icon: 'g_' + g }));
       });
+      const b = S.bait && S.baits[S.bait] > 0 ? S.bait : null;
+      S.bait = b;
+      this.bar.add(U.button(this, 612, 566, 150, 34, b ? `Q  ${D.baits[b].name} ×${S.baits[b]}` : 'Q  No bait', () => this.nextBait(), { color: b ? 0x7a4e9c : 0x4a5a6a, size: 12, icon: b ? 'b_' + b : 'b_none' }));
+      if (S.traps > 0) {
+        const left = S.traps - this.traps.length;
+        this.bar.add(U.button(this, 772, 566, 150, 34, `T  Drop trap ×${left}`, () => this.dropTrap(), { size: 12, icon: 'g_trap', enabled: left > 0 }));
+      }
     }
 
-    caught(id, cut, count) {
-      const S = FR.state, f = D.fish[id];
-      const n = Math.min(count, FR.tankCap() - S.tank.length);
-      for (let i = 0; i < n; i++) FR.addFish(id, cut);
-      FR.sfx('good');
-      const note = cut === 'perfect' ? ' — clean catch, Perfect cut!' : cut === 'bruised' ? ' — rough fight, it is bruised.' : '';
-      U.toast(this, `Caught ${f.name}${n > 1 ? ' ×' + n : ''}${note}`, cut === 'bruised' ? '#ffe9a8' : '#9cffb0');
-      this.drawTank();
+    nextBait() {
+      if (this.cast || this.fight) return;
+      const S = FR.state, opts = [null].concat(Object.keys(D.baits).filter(b => S.baits[b] > 0));
+      S.bait = opts[(opts.indexOf(S.bait) + 1) % opts.length];
+      this.drawBar();
+    }
+
+    dropTrap() {
+      const S = FR.state;
+      if (this.cast || this.fight || this.traps.length >= S.traps) return;
+      const img = this.add.image(this.boat.x, this.boat.y, 'trapbuoy').setDepth(20);
+      this.tweens.add({ targets: img, angle: { from: -8, to: 8 }, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const label = U.text(this, img.x, img.y + 22, '', 12, '#ffffff', { fontStyle: 'bold', stroke: '#2b2140', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
+      this.traps.push({ x: img.x, y: img.y, t: C.trapSeconds, img, label });
+      FR.sfx('splash'); J.burst(this, img.x, img.y, 0xffffff, 8);
+      this.drawBar();
+    }
+
+    collectTrap(tr) {
+      const n = 1 + (Math.random() < 0.4 ? 1 : 0);
+      J.burst(this, tr.x, tr.y, 0xff7a5c, 10);
+      tr.img.destroy(); tr.label.destroy();
+      this.traps = this.traps.filter(x => x !== tr);
+      FR.landFish(this, 'crab', 'normal', false, n);
+      this.drawBar();
+    }
+
+    // ---------- signs on the water ----------
+    spawnSpot(forceId) {
+      const S = FR.state;
+      const id = forceId || FR.weighted(D.areas[S.area].spots), f = D.fish[id];
+      let x, y, tries = 0;
+      do { x = FR.rand(90, 870); y = FR.rand(120, 480); tries++; }
+      while (tries < 30 && (Math.hypot(x - this.boat.x, y - this.boat.y) < 150 || this.spots.some(sp => Math.hypot(x - sp.x, y - sp.y) < 130)));
+      const c = this.add.container(x, y).setDepth(10).setAlpha(0);
+      const tw = cfg => this.tweens.add(Object.assign({ repeat: -1 }, cfg));
+      const ringPulse = (tint, n) => { for (let i = 0; i < n; i++) { const r = this.add.image(0, 0, 'ring').setTint(tint).setScale(0.15); c.add(r); tw({ targets: r, scale: 0.95, alpha: { from: 0.9, to: 0 }, duration: 1800, delay: i * 600 }); } };
+      const glowDot = (tint, sc) => { const g = this.add.image(0, 0, 'softglow').setTint(tint).setScale(sc).setBlendMode(Phaser.BlendModes.ADD); c.add(g); tw({ targets: g, scale: sc * 1.25, alpha: { from: 0.95, to: 0.5 }, duration: 900, yoyo: true }); };
+      if (f.sign === 'ripples') {
+        ringPulse(0xffffff, 3);
+        for (let i = 0; i < 4; i++) { const m = this.add.image(FR.rand(-16, 16), FR.rand(-12, 12), 'fish_sardine').setScale(0.18).setTintFill(0x123a66).setAlpha(0.5); c.add(m); tw({ targets: m, x: m.x + FR.rand(-14, 14), y: m.y + FR.rand(-10, 10), duration: 700 + i * 150, yoyo: true }); }
+      } else if (f.sign === 'glow') glowDot(f.color, 0.75);
+      else if (f.sign === 'gold') { glowDot(0xffd23c, 0.6); for (let i = 0; i < 4; i++) { const st = U.text(this, FR.rand(-24, 24), FR.rand(-20, 20), '✦', 16, '#fff6c2').setOrigin(0.5); c.add(st); tw({ targets: st, alpha: 0, scale: 1.6, duration: 700, delay: i * 250, yoyo: true }); } }
+      else if (f.sign === 'bubbles') { for (let i = 0; i < 6; i++) { const b = this.add.circle(FR.rand(-20, 20), FR.rand(-6, 14), FR.rand(3, 6)).setStrokeStyle(2, 0xffffff, 0.9); c.add(b); tw({ targets: b, y: b.y - 22, alpha: 0, duration: 1100, delay: i * 190 }); } const z = U.text(this, 0, 0, 'ϟ', 20, '#fff27a', { fontStyle: 'bold' }).setOrigin(0.5); c.add(z); tw({ targets: z, alpha: 0, duration: 260, yoyo: true, repeatDelay: 1100 }); }
+      else if (f.sign === 'birds') { const spin = this.add.container(0, 0); c.add(spin); for (let i = 0; i < 3; i++) spin.add(this.add.image(Math.cos(i * 2.1) * 30, Math.sin(i * 2.1) * 30, 'gull')); tw({ targets: spin, angle: 360, duration: 4200 }); ringPulse(0xffffff, 1); }
+      else if (f.sign === 'ink') { const g = this.add.image(0, 0, 'softglow').setTint(0x1a1026).setScale(0.8); c.add(g); tw({ targets: g, scale: 0.95, duration: 1200, yoyo: true }); ringPulse(0x1a1026, 1); }
+      else if (f.sign === 'shadow') { const sh = this.add.image(0, 0, 'fish_old_whiskers').setScale(1.5).setTintFill(0x081a33).setAlpha(0.55); c.add(sh); tw({ targets: sh, x: 26, angle: 6, duration: 2600, yoyo: true, ease: 'Sine.easeInOut' }); ringPulse(0xffe9a8, 2); }
+      const known = !!S.journal[id];
+      const label = U.text(this, 0, f.boss ? 56 : 42, known || f.boss ? f.name : '???', 12, f.boss ? '#ffe14d' : '#ffffff', { fontStyle: 'bold', stroke: '#2b2140', strokeThickness: 3 }).setOrigin(0.5);
+      c.add(label);
+      this.tweens.add({ targets: c, alpha: 1, duration: 500 });
+      this.spots.push({ id, x, y, c, life: f.boss ? 9999 : FR.rand(C.spotLife[0], C.spotLife[1]) });
+    }
+
+    removeSpot(sp, respawn) {
+      this.spots = this.spots.filter(x => x !== sp);
+      this.tweens.add({ targets: sp.c, alpha: 0, duration: 400, onComplete: () => sp.c.destroy() });
+      if (respawn && !D.fish[sp.id].boss) this.time.delayedCall(900, () => { if (!this.finished) this.spawnSpot(); });
+    }
+
+    // ---------- casting ----------
+    startCast(sp) {
+      const S = FR.state, f = D.fish[sp.id];
+      let bait = S.bait;
+      if (bait) { S.baits[bait]--; if (S.baits[bait] <= 0) S.bait = null; }
+      const match = bait === f.bait;
+      const w = C.biteWait[match ? 'match' : bait ? 'other' : 'none'];
+      this.cast = { sp, bait, match, phase: 'wait', t: FR.rand(w[0], w[1]), ignore: f.needsBait && !match };
+      this.bobber.setPosition(sp.x, sp.y).setVisible(true);
+      FR.sfx('splash'); J.burst(this, sp.x, sp.y, 0xffffff, 6, 26);
+      this.drawBar();
+    }
+
+    endCast(spook) {
+      const sp = this.cast.sp;
+      this.cast = null;
+      this.bobber.setVisible(false); this.bang.setVisible(false);
+      if (spook) this.removeSpot(sp, true);
+    }
+
+    hook() {
+      const S = FR.state, cast = this.cast, id = cast.sp.id, f = D.fish[id];
+      const check = FR.gearCheck(id, S.useGear);
+      this.bang.setVisible(false);
+      if (check.fail) { FR.sfx('bad'); J.shake(this, 0.008); U.toast(this, check.fail, '#ff9c9c'); this.endCast(!f.boss); return; }
+      if (check.scoop) {
+        J.burst(this, cast.sp.x, cast.sp.y, 0xb8c7d6, 14);
+        this.endCast(true);
+        FR.landFish(this, id, 'perfect', cast.match, check.scoop);
+        return;
+      }
+      cast.phase = 'fight';
+      this.fight = new FR.Fight(this, id, {
+        gear: S.useGear, baitMatch: cast.match,
+        onDone: res => {
+          this.fight = null;
+          const boss = f.boss;
+          this.endCast(res.caught || !boss);
+          if (!res.caught) { FR.sfx('bad'); U.toast(this, res.msg, '#ff9c9c'); return; }
+          const size = FR.landFish(this, id, check.bruise ? 'bruised' : res.cut, cast.match);
+          if (boss && size) {
+            S.bossBeaten = true;
+            const r = D.recipes.find(x => x.legendary && x.fish[id]);
+            if (r) FR.unlockRecipe(r.id);
+            J.pop(this, 480, 200, 'OLD WHISKERS IS YOURS!', '#ffe14d', 46); J.shake(this, 0.015);
+            U.toast(this, `You beat ${f.name}! Legendary recipe unlocked: ${r.name}.`, '#ffe14d');
+          }
+        }
+      });
     }
 
     finish() {
-      if (this.finished) return;
+      if (this.finished || this.fight) return;
       this.finished = true;
+      this.traps.filter(t => t.t <= 0).forEach(t => this.collectTrap(t));
       this.scene.start('Prep');
     }
 
     update(time, delta) {
       if (this.finished) return;
+      const S = FR.state;
       const dt = Math.min(delta, 100) / 1000;
       const inp = this.inp.poll();
       this.timeLeft -= dt * FR.dev.speed;
-      this.sea.update(dt);
-      this.rig.update(dt, inp);
       this.hud.set(U.clock(this.timeLeft));
-      if (this.timeLeft <= 0 && !this.rig.busy()) this.finish();
+      this.shimmer.tilePositionX += dt * 8;
+
+      if (this.fight) { this.prompt.setVisible(false); this.fight.update(dt, inp); return; }
+
+      // schools drift away after a while
+      for (const sp of this.spots.slice()) {
+        if (this.cast && this.cast.sp === sp) continue;
+        sp.life -= dt;
+        if (sp.life <= 0) this.removeSpot(sp, true);
+      }
+      for (const tr of this.traps) {
+        tr.t -= dt;
+        tr.label.setText(tr.t > 0 ? Math.ceil(tr.t) + 's' : 'READY!').setColor(tr.t > 0 ? '#ffffff' : '#9cffb0');
+      }
+
+      const full = S.tank.length >= FR.tankCap();
+      if (this.cast) {
+        const c = this.cast;
+        this.lineG.clear(); this.lineG.lineStyle(2, 0xfff6d6, 0.9); this.lineG.lineBetween(this.boat.x, this.boat.y, this.bobber.x, this.bobber.y);
+        c.t -= dt;
+        if (c.phase === 'wait') {
+          this.bobber.y = c.sp.y + Math.sin(time / 160) * 2;
+          this.prompt.setText('Wait for the bite…');
+          if (inp.just) { U.toast(this, 'Too early! You scared them off.', '#ffe9a8'); this.endCast(true); }
+          else if (c.t <= 0) {
+            if (c.ignore) { U.toast(this, 'Something huge glints below, but it ignores your bait. It wants something shinier.', '#ffe9a8'); this.endCast(false); }
+            else { c.phase = 'bite'; c.t = C.biteWindow; this.bang.setPosition(c.sp.x, c.sp.y - 46).setVisible(true); FR.sfx('bite'); }
+          }
+        } else if (c.phase === 'bite') {
+          this.prompt.setText('NOW! Press SPACE!');
+          this.bobber.y = c.sp.y + 8;
+          if (inp.just) this.hook();
+          else if (c.t <= 0) { FR.sfx('bad'); U.toast(this, 'Too slow. It spat the hook.', '#ff9c9c'); this.endCast(true); }
+        }
+      } else {
+        this.lineG.clear();
+        // steer
+        if (inp.floorClick && inp.py > 44 && inp.py < 536) this.target = { x: inp.px, y: inp.py };
+        let vx = inp.mx, vy = inp.my;
+        if (vx || vy) this.target = null;
+        else if (this.target) {
+          const dx = this.target.x - this.boat.x, dy = this.target.y - this.boat.y, d = Math.hypot(dx, dy);
+          if (d < 8) this.target = null; else { vx = dx / d; vy = dy / d; }
+        }
+        const len = Math.hypot(vx, vy);
+        if (len > 0) {
+          this.boat.x = Phaser.Math.Clamp(this.boat.x + vx / len * C.boatSpeed * dt, 34, 926);
+          this.boat.y = Phaser.Math.Clamp(this.boat.y + vy / len * C.boatSpeed * dt, 84, 520);
+          this.boat.rotation = Phaser.Math.Angle.RotateTo(this.boat.rotation, Math.atan2(vy, vx) + Math.PI / 2, dt * 7);
+          this.wakeT -= dt;
+          if (this.wakeT <= 0) { this.wakeT = 0.09; const w = this.add.circle(this.boat.x - vx / len * 40, this.boat.y - vy / len * 40, 6, 0xffffff, 0.5).setDepth(5); this.tweens.add({ targets: w, scale: 2.4, alpha: 0, duration: 800, onComplete: () => w.destroy() }); }
+        }
+
+        // what is in reach?
+        const near = (o, r) => Math.hypot(o.x - this.boat.x, o.y - this.boat.y) < r;
+        const trap = this.traps.find(t => t.t <= 0 && near(t, 60));
+        const sp = this.spots.filter(s => near(s, C.spotRadius)).sort((a, b) => Math.hypot(a.x - this.boat.x, a.y - this.boat.y) - Math.hypot(b.x - this.boat.x, b.y - this.boat.y))[0];
+        if (trap) {
+          this.prompt.setText(full ? 'The fish tank is full!' : 'SPACE: haul up the crab trap');
+          if (inp.just && !full) this.collectTrap(trap);
+        } else if (sp) {
+          const f = D.fish[sp.id], known = S.journal[sp.id];
+          const info = known ? `${f.name} — likes ${D.baits[f.bait].name}, use the ${D.gear[f.gear[0]].name}` : f.boss ? `${f.name}: ${f.tip}` : 'Unknown fish. Try a cast and learn what it is.';
+          this.prompt.setText(full ? 'The fish tank is full!' : `SPACE: cast with ${D.gear[S.useGear].name}${S.bait ? ' + ' + D.baits[S.bait].name : ''}\n${info}`);
+          if (inp.just && !full) this.startCast(sp);
+        } else this.prompt.setText('');
+        this.prompt.setVisible(!!this.prompt.text);
+      }
+      if (this.timeLeft <= 0 && !this.cast) this.finish();
     }
   }
 

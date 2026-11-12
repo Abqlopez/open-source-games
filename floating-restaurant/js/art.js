@@ -478,6 +478,8 @@
     line(c, [[180, 36], [180, h]], OUT, 4);
   }
 
+  A.kit = { tex, fs, lin, glow, ell, rr, poly, line, eye, drawFish, miniFish, plate, rnd, OUT };
+
   // ---------- build everything once ----------
   A.build = function (scene) {
     if (scene.textures.exists('fish_sardine')) return;

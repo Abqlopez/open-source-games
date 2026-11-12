@@ -24,8 +24,8 @@
         U.button(this, 480, 440, 220, 52, 'Start', () => { FR.state = FR.newState(); this.scene.start('Fishing'); }, { color: 0x3f8f4f, size: 22 }).setDepth(20);
       }
       U.text(this, 480, 540,
-        'Mouse + spacebar.  Morning: hold SPACE to cast, press it on the "!" to hook, then read each fish.\n' +
-        'Afternoon: set the menu and shop.  Night: click an order to cook it, then serve the customer.',
+        'Move with WASD or the arrow keys.  Do things with E or SPACE.\n' +
+        'Morning: steer to the signs on the water and fish.  Night: run the whole boat yourself.',
         14, '#ffffff', { align: 'center', backgroundColor: '#2b2140cc', padding: { x: 12, y: 8 } }).setOrigin(0.5).setDepth(20);
     }
     update(t, d) { this.sea.update(d / 1000); }
@@ -40,17 +40,33 @@
       U.card(this, 480, 300, 646, 546, 0xffd98a);
       U.card(this, 480, 300, 636, 536, 0x1d3557);
       U.title(this, 480, 64, `Day ${r.day} results`, 36).setOrigin(0.5);
-      const lines = [
-        `Money earned:  $${r.earned}`,
-        `Tips:  $${r.tips}`,
-        `Customers served:  ${r.served}     walked out:  ${r.walked}     turned away:  ${r.turned}`,
-        `Reviews tonight:  ${r.reviews.length ? r.reviews.map(n => n + '★').join('  ') : 'none'}`,
-        `Star rating:  ★ ${r.rating.toFixed(1)}   (about ${FR.customersTonight()} customers tomorrow night)`,
+      const L = r.ledger;
+      const income = L.sales + L.tips + L.raw + L.rewards, costs = L.ingredients + L.bait + L.plates, profit = income - costs;
+      const money = n => (n < 0 ? '-$' + (-n) : '$' + n);
+      const rows = [
+        ['Dishes sold', L.sales], ['Tips' + (r.bestCombo >= 2 ? `  (best combo x${r.bestCombo})` : ''), L.tips], ['Raw fish sold', L.raw], ['Journal + gifts', L.rewards],
+        ['Ingredients', -L.ingredients], ['Bait', -L.bait], ['New plates' + (r.broken ? `  (${r.broken} broke)` : ''), -L.plates]
+      ];
+      U.text(this, 190, 100, 'EARNINGS', 13, '#ffe9a8', { fontStyle: 'bold' });
+      rows.forEach(([name, v], i) => {
+        U.text(this, 190, 120 + i * 20, name, 14, '#ffffff');
+        U.text(this, 470, 120 + i * 20, money(v), 14, v < 0 ? '#ff9c9c' : '#9cffb0').setOrigin(1, 0);
+      });
+      this.add.rectangle(330, 264, 280, 2, 0xffe9a8);
+      U.text(this, 190, 270, "Tonight's profit", 16, '#ffe9a8', { fontStyle: 'bold' });
+      U.text(this, 470, 270, money(profit), 16, profit < 0 ? '#ff9c9c' : '#9cffb0', { fontStyle: 'bold' }).setOrigin(1, 0);
+      if (L.invest) U.text(this, 190, 292, `Also invested in the boat: $${L.invest}`, 12, '#bfe3ff');
+      const side = [
+        `Served:  ${r.served}`, `Walked out:  ${r.walked}`, `Turned away:  ${r.turned}`,
+        `Star rating:  ★ ${r.rating.toFixed(1)}`, `Tomorrow: about ${FR.customersTonight()} customers`,
         `Fish spoiled:  ${r.spoiled.length ? r.spoiled.join(', ') : 'none'}`
       ];
+      U.text(this, 510, 100, 'THE NIGHT', 13, '#ffe9a8', { fontStyle: 'bold' });
+      U.text(this, 510, 120, side.join('\n'), 14, '#ffffff', { lineSpacing: 6, wordWrap: { width: 270 } });
+      const lines = [`Reviews:  ${r.reviews.length ? r.reviews.map(n => n + '★').join(' ') : 'none'}`];
       if (r.requests.length) lines.push(`Requests for tomorrow (pays double):  ${r.requests.map(q => FR.recipe(q.recipe).name).join(', ')}`);
       r.events.forEach(e => lines.push('• ' + e));
-      U.text(this, 190, 114, lines.join('\n\n'), 15, '#ffffff', { wordWrap: { width: 580 }, lineSpacing: 2 });
+      U.text(this, 190, 322, lines.join('\n'), 13, '#ffffff', { wordWrap: { width: 580 }, lineSpacing: 5 });
       U.text(this, 480, 492, `You have $${S.money}.  Progress saved.`, 14, '#bfe3ff').setOrigin(0.5);
       U.button(this, 480, 536, 240, 46, `Start day ${S.day} ▶`, () => this.scene.start('Fishing'), { color: 0x3f8f4f, size: 18 });
     }

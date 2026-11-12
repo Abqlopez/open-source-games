@@ -80,7 +80,7 @@
   U.toast = function (s, msg, color) {
     if (s._toast && s._toast.active) s._toast.destroy();
     const t = U.text(s, 480, 92, msg, 17, color || '#ffffff', { backgroundColor: '#2b2140ee', padding: { x: 14, y: 8 }, align: 'center' })
-      .setOrigin(0.5).setDepth(900);
+      .setOrigin(0.5).setDepth(9400);
     s._toast = t;
     s.tweens.add({ targets: t, alpha: 0, delay: 2200, duration: 500, onComplete: () => t.destroy() });
     return t;
@@ -88,7 +88,7 @@
 
   U.float = function (s, x, y, msg, color) {
     const t = U.text(s, x, y, msg, 15, color || '#ffffff', { fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 })
-      .setOrigin(0.5).setDepth(850);
+      .setOrigin(0.5).setDepth(9050);
     s.tweens.add({ targets: t, y: y - 36, alpha: 0, delay: 700, duration: 900, onComplete: () => t.destroy() });
   };
 
@@ -99,10 +99,10 @@
 
   // Top bar: day, time of day, money, stars, fish in the tank.
   U.hud = function (s, phase) {
-    s.add.rectangle(480, 18, 960, 36, 0x2b2140).setDepth(800);
-    s.add.rectangle(480, 36, 960, 3, 0xffd98a).setDepth(800);
-    const left = U.text(s, 12, 18, '', 16).setOrigin(0, 0.5).setDepth(801);
-    const right = U.text(s, 948, 18, '', 16, '#ffe9a8').setOrigin(1, 0.5).setDepth(801);
+    s.add.rectangle(480, 18, 960, 36, 0x2b2140).setDepth(8000);
+    s.add.rectangle(480, 36, 960, 3, 0xffd98a).setDepth(8000);
+    const left = U.text(s, 12, 18, '', 16).setOrigin(0, 0.5).setDepth(8001);
+    const right = U.text(s, 948, 18, '', 16, '#ffe9a8').setOrigin(1, 0.5).setDepth(8001);
     const h = {
       set(time) {
         const S = FR.state;
@@ -114,20 +114,26 @@
     return h;
   };
 
-  // One "action" input per scene: the spacebar, or an on-screen button that
-  // does the same job (handy on touch screens).
+  // One input helper per scene. "Action" is E or the spacebar, or the on-screen
+  // button (handy on touch screens). Movement is WASD / arrows, or click a spot to walk there.
   FR.makeInput = function (scene) {
-    const space = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    const st = { btn: false, q: false, pq: false, prev: false };
-    scene.input.keyboard.on('keydown-SPACE', ev => { if (!ev.repeat) st.q = true; });
-    scene.input.on('pointerdown', () => { st.pq = true; });
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    const keys = scene.input.keyboard.addKeys({ space: K.SPACE, e: K.E, w: K.W, a: K.A, s: K.S, d: K.D, up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT });
+    const st = { btn: false, q: false, pq: false, prev: false, dir: null, ui: false };
+    const dirOf = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
+    scene.input.keyboard.on('keydown', ev => {
+      if (ev.repeat) return;
+      if (ev.code === 'Space' || ev.code === 'KeyE') st.q = true;
+      if (dirOf[ev.code]) st.dir = dirOf[ev.code];
+    });
+    scene.input.on('pointerdown', (p, over) => { st.pq = true; st.ui = over.length > 0; });
     scene.input.on('pointerup', () => { st.btn = false; });
     return {
       addActionButton(x, y) {
-        const c = scene.add.container(x, y).setDepth(950);
-        const sh = scene.add.circle(0, 5, 42, 0x2b2140);
-        const bg = scene.add.circle(0, 0, 42, 0xff8a3c).setStrokeStyle(4, 0x2b2140);
-        const t = U.text(scene, 0, 0, 'ACTION\n(space)', 13, '#ffffff', { align: 'center', fontStyle: 'bold' }).setOrigin(0.5);
+        const c = scene.add.container(x, y).setDepth(9500);
+        const sh = scene.add.circle(0, 5, 40, 0x2b2140);
+        const bg = scene.add.circle(0, 0, 40, 0xff8a3c).setStrokeStyle(4, 0x2b2140);
+        const t = U.text(scene, 0, 0, 'ACTION\n(E / space)', 12, '#ffffff', { align: 'center', fontStyle: 'bold' }).setOrigin(0.5);
         c.add([sh, bg, t]);
         bg.setInteractive({ useHandCursor: true });
         bg.on('pointerdown', () => { st.btn = true; st.q = true; });
@@ -136,12 +142,38 @@
       },
       poll() {
         const p = scene.input.activePointer;
-        const down = space.isDown || st.btn;
-        const r = { down, just: st.q, up: !down && st.prev, px: p.x, py: p.y, pdown: p.isDown, pjust: st.pq };
-        st.q = false; st.pq = false; st.prev = down;
+        const down = keys.space.isDown || keys.e.isDown || st.btn;
+        const r = {
+          down, just: st.q, up: !down && st.prev, px: p.x, py: p.y, pdown: p.isDown, pjust: st.pq,
+          floorClick: st.pq && !st.ui, dir: st.dir,
+          mx: (keys.d.isDown || keys.right.isDown ? 1 : 0) - (keys.a.isDown || keys.left.isDown ? 1 : 0),
+          my: (keys.s.isDown || keys.down.isDown ? 1 : 0) - (keys.w.isDown || keys.up.isDown ? 1 : 0)
+        };
+        st.q = false; st.pq = false; st.dir = null; st.prev = down;
         return r;
       }
     };
+  };
+
+  // Juice: bursts, popups and shakes so every action lands.
+  FR.juice = {
+    burst(s, x, y, color, n, spread) {
+      for (let i = 0; i < (n || 8); i++) {
+        const a = Math.random() * Math.PI * 2, d = (spread || 46) * (0.5 + Math.random() * 0.7);
+        const dot = s.add.circle(x, y, 2 + Math.random() * 3, color).setDepth(9000);
+        s.tweens.add({ targets: dot, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 10, alpha: 0, scale: 0.3, duration: 380 + Math.random() * 260, ease: 'Cubic.easeOut', onComplete: () => dot.destroy() });
+      }
+    },
+    puff(s, x, y, color) {
+      const c = s.add.circle(x + FR.rand(-6, 6), y, FR.rand(4, 7), color, 0.55).setDepth(8500);
+      s.tweens.add({ targets: c, y: y - FR.rand(24, 40), scale: 2, alpha: 0, duration: 900, onComplete: () => c.destroy() });
+    },
+    pop(s, x, y, text, color, size) {
+      const t = U.title(s, x, y, text, size || 30, color || '#ffe14d').setOrigin(0.5).setDepth(9100).setScale(0.3);
+      s.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.easeOut' });
+      s.tweens.add({ targets: t, y: y - 40, alpha: 0, delay: 650, duration: 450, onComplete: () => t.destroy() });
+    },
+    shake(s, amount) { s.cameras.main.shake(140, amount || 0.006); }
   };
 
   // Tiny synth blips so catches and coins have some feedback.
@@ -154,7 +186,8 @@
       const def = {
         click: [440, 0.05, 'square', 0.03], blip: [660, 0.08, 'sine', 0.07], bite: [880, 0.15, 'square', 0.06],
         good: [784, 0.3, 'triangle', 0.09], bad: [160, 0.3, 'sawtooth', 0.06], coin: [1046, 0.2, 'triangle', 0.08],
-        zap: [90, 0.2, 'sawtooth', 0.09]
+        zap: [90, 0.2, 'sawtooth', 0.09], chop: [300, 0.05, 'square', 0.05], splash: [220, 0.25, 'sine', 0.08],
+        sizzle: [1800, 0.12, 'sawtooth', 0.02], wash: [520, 0.1, 'sine', 0.05], perfect: [1318, 0.35, 'triangle', 0.1], order: [587, 0.12, 'triangle', 0.07]
       }[name];
       if (!def) return;
       const o = ctx.createOscillator(), g = ctx.createGain();
