@@ -26,12 +26,12 @@
       this.count = 0;
       this.fishes = [];
       for (let i = 0; i < 5; i++) {
-        const e = this.add(this.s.add.ellipse(FR.rand(-200, 200), FR.rand(-40, 60), 32, 14, this.fish.color).setStrokeStyle(1, 0xffffff));
+        const e = this.add(this.s.add.image(FR.rand(-200, 200), FR.rand(-40, 60), 'fish_' + this.fish.id).setScale(0.45));
         e.vx = FR.rand(70, 130) * (Math.random() < 0.5 ? -1 : 1) * this.speed;
         e.vy = FR.rand(-50, 50) * this.speed;
         this.fishes.push(e);
       }
-      this.net = this.add(this.s.add.circle(0, 0, 26).setStrokeStyle(3, 0xffe9a8));
+      this.net = this.add(this.s.add.image(0, 0, 'net'));
       this.tbar = this.bar(-150, -52, 300, 8, 0x6fdc6f);
     }
     update(dt, inp) {
@@ -40,7 +40,7 @@
       this.net.setPosition(p.x, p.y).setAlpha(inp.pdown ? 1 : 0.35);
       for (const f of this.fishes) {
         if (f.gone) continue;
-        f.x += f.vx * dt; f.y += f.vy * dt;
+        f.x += f.vx * dt; f.y += f.vy * dt; f.flipX = f.vx < 0;
         if (f.x < -250 || f.x > 250) { f.vx *= -1; f.x = Math.max(-250, Math.min(250, f.x)); }
         if (f.y < -40 || f.y > 75) { f.vy *= -1; f.y = Math.max(-40, Math.min(75, f.y)); }
         if (inp.pdown && Math.hypot(f.x - p.x, f.y - p.y) < 30) {
@@ -63,7 +63,7 @@
       this.prog = 0; this.strain = 0; this.total = 0;
       this.glow = false; this.phase = FR.rand(0.4, 0.8);
       this.ring = this.add(this.s.add.ellipse(0, 5, 130, 66, this.fish.color, 0.45));
-      this.body = this.add(this.s.add.ellipse(0, 5, 96, 42, 0x24506e).setStrokeStyle(2, 0x3a6f94));
+      this.body = this.add(this.s.add.image(0, 5, 'fish_' + this.fish.id).setScale(1.25));
       this.pbar = this.bar(-150, 62, 300, 12, 0x6fdc6f);
       this.sbar = this.bar(-150, 80, 300, 6, 0xff5b5b);
     }
@@ -81,7 +81,8 @@
       }
       const limit = 1.2 * this.ease;
       this.ring.setVisible(this.glow);
-      this.body.setFillStyle(this.glow ? this.fish.color : 0x24506e);
+      if (this.glow) this.body.clearTint().setAlpha(1); else this.body.setTint(0x10283c).setAlpha(0.6);
+      this.body.y = 5 + Math.sin(this.total * 3) * 4;
       this.pbar.set(this.prog);
       this.sbar.set(this.strain / limit);
       this.status.setText(this.glow ? 'Glowing — reel!' : 'Dark — let go!');
@@ -97,7 +98,7 @@
       super(...a);
       this.prog = 0; this.hits = 0; this.total = 0;
       this.state = 'calm'; this.timer = FR.rand(1.2, 2.2);
-      this.body = this.add(this.s.add.rectangle(0, 5, 170, 22, this.fish.color).setStrokeStyle(2, 0x8a6d00));
+      this.body = this.add(this.s.add.image(0, 5, 'fish_' + this.fish.id).setScale(1.5));
       this.flash = this.add(U.text(this.s, 0, -38, '', 22, '#fff27a', { fontStyle: 'bold' }).setOrigin(0.5));
       this.pbar = this.bar(-150, 62, 300, 12, 0x6fdc6f);
     }
@@ -115,7 +116,8 @@
         } else this.prog += dt * 0.24;
       }
       this.flash.setText(this.state === 'warn' ? '! ! !' : this.state === 'zap' ? 'ZAP!' : '');
-      this.body.setFillStyle(this.state === 'zap' ? 0xffffff : this.state === 'warn' ? 0xffa53c : this.fish.color);
+      if (this.state === 'zap') this.body.setTintFill(0xffffff); else if (this.state === 'warn') this.body.setTint(0xff8a3c); else this.body.clearTint();
+      this.body.x = this.state === 'zap' ? FR.rand(-4, 4) : Math.sin(this.total * 2) * 10;
       this.pbar.set(this.prog);
       this.status.setText(`Line hits: ${this.hits}/${this.line}`);
       if (this.hits >= this.line) return { caught: false, msg: 'ZAP! The line snapped.' };
@@ -134,8 +136,8 @@
       this.add(this.s.add.rectangle(-200, 15, 26, 150, 0x0b2a44).setStrokeStyle(2, 0xffffff, 0.6));
       this.add(U.text(this.s, -200, -70, 'surface', 11, '#bfe3ff').setOrigin(0.5));
       this.add(U.text(this.s, -200, 100, 'lost', 11, '#ff9c9c').setOrigin(0.5));
-      this.marker = this.add(this.s.add.ellipse(-200, 15, 22, 12, this.fish.color).setStrokeStyle(1, 0xffffff));
-      this.body = this.add(this.s.add.ellipse(30, 0, 150, 56, this.fish.color).setStrokeStyle(2, 0xffffff));
+      this.marker = this.add(this.s.add.image(-200, 15, 'fish_' + this.fish.id).setScale(0.26).setAngle(-90));
+      this.body = this.add(this.s.add.image(30, 0, 'fish_' + this.fish.id).setScale(1.5));
       this.label = this.add(U.text(this.s, 30, 58, '', 18, '#ffffff', { fontStyle: 'bold' }).setOrigin(0.5));
     }
     update(dt, inp) {
@@ -151,6 +153,7 @@
       } else if (inp.just) { this.depth -= 0.075; FR.sfx('blip'); }
       this.marker.y = -60 + 150 * Math.max(0, Math.min(1, this.depth));
       this.body.y = this.state === 'dive' ? 8 + Math.sin(this.t += dt * 20) * 3 : 0;
+      this.body.setAngle(this.state === 'dive' ? 28 : -6);
       this.label.setText(this.state === 'dive' ? 'DIVING — wait!' : 'PAUSED — pump!');
       this.label.setColor(this.state === 'dive' ? '#ff9c9c' : '#9cffb0');
       this.status.setText(`Line strain: ${this.mistakes}/${this.line + 1}`);
@@ -166,8 +169,9 @@
     constructor(...a) {
       super(...a);
       this.colors = [0xff5b5b, 0xffd23c, 0x5bd1ff, 0xb46bff];
+      this.add(this.s.add.image(0, -44, 'fish_' + this.fish.id).setScale(0.62));
       this.orbs = this.colors.map((col, i) => {
-        const o = this.add(this.s.add.circle(-135 + i * 90, 10, 30, col, 0.3).setStrokeStyle(3, 0xffffff, 0.7));
+        const o = this.add(this.s.add.circle(-135 + i * 90, 28, 27, col, 0.3).setStrokeStyle(4, 0x2b2140, 1));
         o.col = col;
         return o;
       });

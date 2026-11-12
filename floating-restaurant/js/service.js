@@ -1,7 +1,8 @@
 // Night: customers board, order from the menu, and you cook and serve them.
 (function () {
   const U = FR.ui, D = FR.DATA, C = D.config;
-  const TABLE_POS = [[150, 215], [330, 215], [510, 215], [150, 425], [330, 425], [510, 425]];
+  const TABLE_POS = [[150, 232], [335, 232], [520, 232], [150, 440], [335, 440], [520, 440]];
+  const HEAD = 140; // how far above a table the floating text appears
   const STATION_X = [715, 805, 895];
 
   class ServiceScene extends Phaser.Scene {
@@ -16,38 +17,45 @@
       this.res = { earned: 0, tips: 0, reviews: [], served: 0, walked: 0, turned: 0, requests: [], events: [] };
       this.customers = []; this.queue = [];
 
-      // Deck (top-down), lit by lanterns
-      this.add.rectangle(480, 300, 960, 600, 0x0b1b2e);
-      this.add.rectangle(335, 295, 630, 490, th.deck).setStrokeStyle(5, th.trim);
-      this.add.rectangle(335, 295, 630, 490, 0x0b1b2e, S.decor.lanterns ? 0.12 : 0.3);
-      if (S.decor.lanterns) [[60, 90], [610, 90], [60, 500], [610, 500], [335, 90]].forEach(([x, y]) => {
-        this.add.circle(x, y, 60, 0xffc56b, 0.16);
-        this.add.circle(x, y, 7, 0xffd98a);
+      // Deck at night, lit by lanterns
+      FR.art.build(this);
+      this.add.image(480, 300, 'nightsea');
+      this.add.image(335, 295, 'deck_' + S.theme);
+      this.add.rectangle(335, 295, 600, 460, 0x0b1b2e, S.decor.lanterns ? 0.1 : 0.32);
+      if (S.decor.lanterns) [[70, 96], [600, 96], [70, 500], [600, 500], [335, 96]].forEach(([x, y], i) => {
+        const gl = this.add.circle(x, y + 8, 70, 0xffc56b, 0.16);
+        this.tweens.add({ targets: gl, alpha: 0.1, scale: 0.94, duration: 900 + i * 130, yoyo: true, repeat: -1 });
+        this.add.image(x, y, 'lantern');
       });
-      if (S.decor.plants) [[40, 300], [630, 300]].forEach(([x, y]) => this.add.circle(x, y, 13, 0x4caf50).setStrokeStyle(2, 0x2c6e31));
-      if (S.decor.sign) U.text(this, 335, 66, '~ FLOATING RESTAURANT ~', 15, '#ffe9a8', { fontStyle: 'bold' }).setOrigin(0.5);
+      if (S.decor.plants) [[48, 300], [622, 300]].forEach(([x, y]) => this.add.image(x, y, 'plant'));
+      if (S.decor.sign) {
+        this.add.image(335, 70, 'plank');
+        U.text(this, 335, 70, 'FLOATING RESTAURANT', 15, '#ffe9a8', { fontStyle: 'bold' }).setOrigin(0.5);
+      }
 
       this.tables = [];
       for (let i = 0; i < FR.tableCount(); i++) {
         const [x, y] = TABLE_POS[i];
-        this.add.rectangle(x, y, 104, 50, S.decor.tablestyle ? 0xb3262b : th.table).setStrokeStyle(2, S.decor.tablestyle ? 0xffe9a8 : 0x5b4630);
-        U.text(this, x, y, 'Table ' + (i + 1), 12, S.decor.tablestyle ? '#ffe9a8' : '#5b4630').setOrigin(0.5);
+        this.add.image(x, y, S.decor.tablestyle ? 'table_fancy' : 'table_' + S.theme);
+        U.text(this, x, y + 36, 'Table ' + (i + 1), 11, '#ffffff').setOrigin(0.5).setAlpha(0.7);
         this.tables.push({ i, x, y, cust: null });
       }
-      U.text(this, 30, 548, 'Waiting to be seated:', 12, '#bfe3ff');
+      U.text(this, 30, 548, 'Waiting to\nbe seated:', 12, '#bfe3ff');
 
       // Kitchen
-      this.add.rectangle(805, 318, 280, 556, 0x1c2b3a).setStrokeStyle(2, 0x8fb3c9);
-      U.text(this, 805, 56, 'KITCHEN', 15, '#ffe9a8', { fontStyle: 'bold' }).setOrigin(0.5);
+      this.add.image(805, 318, 'kitchen');
+      U.title(this, 805, 58, 'KITCHEN', 20).setOrigin(0.5);
       this.stations = [];
       for (let i = 0; i < 3; i++) {
         const open = i < FR.stationCount(), x = STATION_X[i], y = 112;
-        const box = this.add.rectangle(x, y, 82, 72, open ? 0x33485c : 0x222a33).setStrokeStyle(2, 0x8fb3c9, open ? 1 : 0.3);
-        const txt = U.text(this, x, y - 6, open ? 'empty' : 'locked', 11, open ? '#cfe3f2' : '#66727e', { align: 'center', wordWrap: { width: 78 } }).setOrigin(0.5);
-        if (!open) continue;
-        const bar = U.bar(this, x - 36, y + 28, 72, 6, 0xff8a3c);
-        const bin = U.text(this, x + 33, y - 28, '✕', 13, '#ff9c9c').setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true });
-        const st = { i, x, y, box, txt, bar, bin, state: 'empty', dish: null, t: 0 };
+        const box = this.add.image(x, y, 'stove');
+        if (!open) { box.setTint(0x445566).setAlpha(0.45); U.text(this, x, y, 'locked', 11, '#8a97a5').setOrigin(0.5); continue; }
+        const ring = this.add.rectangle(x, y, 88, 78).setStrokeStyle(4, 0xffe14d).setVisible(false);
+        const dish = this.add.image(x, y - 12, 'dish_kelp_wrap').setScale(0.78).setVisible(false);
+        const txt = U.text(this, x, y + 21, '', 11, '#cfe3f2', { align: 'center', fontStyle: 'bold', stroke: '#2b2140', strokeThickness: 3 }).setOrigin(0.5);
+        const bar = U.bar(this, x - 34, y + 31, 68, 7, 0xff8a3c);
+        const bin = U.text(this, x + 30, y - 27, '✕', 15, '#ff9c9c', { fontStyle: 'bold', stroke: '#2b2140', strokeThickness: 3 }).setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true });
+        const st = { i, x, y, box, ring, dishImg: dish, txt, bar, bin, state: 'empty', dish: null, t: 0 };
         box.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.clickStation(st));
         bin.on('pointerdown', () => { st.state = 'empty'; st.dish = null; if (this.sel === st) this.sel = null; this.drawStation(st); });
         this.stations.push(st);
@@ -57,10 +65,11 @@
       U.text(this, 675, 186, 'Orders — click one to cook it:', 12, '#bfe3ff');
       this.ticketC = this.add.container(0, 0).setDepth(10);
 
-      const legend =
-        'ROLE (square)\n' + Object.values(D.roles).map(r => `${r.letter} ${r.name}: ${r.blurb}`).join('\n') +
-        '\nSPECIES (circle)\n' + Object.values(D.species).filter(sp => D.areas[S.area].species[sp.id]).map(sp => `${sp.letter} ${sp.name}: ${sp.blurb}`).join('\n');
-      U.text(this, 675, 452, legend, 11, '#9fb6c9', { lineSpacing: 2 });
+      let ly = 440;
+      const legendRow = (key, text) => { this.add.image(686, ly, key).setScale(0.62); U.text(this, 700, ly, text, 11, '#bfd3e6').setOrigin(0, 0.5); ly += 19; };
+      Object.values(D.roles).forEach(r => legendRow('role_' + r.id, `${r.name}: ${r.blurb}`));
+      ly += 5;
+      Object.values(D.species).filter(sp => D.areas[S.area].species[sp.id]).forEach(sp => legendRow('sp_' + sp.id, `${sp.name}: ${sp.blurb}`));
 
       this.hud = U.hud(this, 'Night');
       this.actionBtn = this.inp.addActionButton(880, 545).setVisible(false);
@@ -91,18 +100,15 @@
         patience: 1, rate: 1, orders: [], state: 'queue'
       };
       c.ptime = C.patience[c.role.patience] * (1 + C.decorPatienceBonus * FR.decorCount());
-      const k = this.add.container(-40, 574).setDepth(20);
-      const body = this.add.circle(0, 0, 18, c.species.color).setStrokeStyle(2, 0xffffff);
-      const rb = this.add.rectangle(-15, -27, 18, 18, c.role.color).setStrokeStyle(1, 0xffffff);
-      const rt = U.text(this, -15, -27, c.role.letter, 12, '#ffffff', { fontStyle: 'bold' }).setOrigin(0.5);
-      const sb = this.add.circle(15, -27, 10, c.species.color).setStrokeStyle(1, 0xffffff);
-      const stx = U.text(this, 15, -27, c.species.letter, 12, '#1a1a1a', { fontStyle: 'bold' }).setOrigin(0.5);
-      const bar = U.bar(this, -22, 26, 44, 6, 0x6fdc6f);
-      const bubble = U.text(this, 0, -42, '', 12, '#1a1a1a', { backgroundColor: '#fffbe8', padding: { x: 5, y: 3 }, align: 'center' }).setOrigin(0.5, 1).setVisible(false);
-      k.add([body, rb, rt, sb, stx, ...bar.objs, bubble]);
-      if (c.regular) k.add(U.text(this, 0, 40, c.regular.name, 11, '#ffe9a8', { fontStyle: 'bold' }).setOrigin(0.5));
+      const k = this.add.container(-40, 560).setDepth(20);
+      const body = this.add.image(0, 0, FR.art.customerKey(c));
+      const rb = this.add.image(-15, -46, 'role_' + c.role.id).setScale(0.86);
+      const sb = this.add.image(15, -46, 'sp_' + c.species.id).setScale(0.86);
+      const bar = U.bar(this, -24, 38, 48, 7, 0x6fdc6f);
+      const bub = this.add.container(0, -62);
+      k.add([body, rb, sb, ...bar.objs, bub]);
       body.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.clickCustomer(c));
-      c.k = k; c.bar = bar; c.bubble = bubble;
+      c.k = k; c.bar = bar; c.bub = bub; c.body = body;
 
       const menu = S.menu.map(FR.recipe);
       let no = null;
@@ -120,7 +126,7 @@
     }
 
     layoutQueue() {
-      this.queue.forEach((c, i) => this.tweens.add({ targets: c.k, x: 190 + i * 52, y: 574, duration: 350 }));
+      this.queue.forEach((c, i) => this.tweens.add({ targets: c.k, x: 140 + i * 58, y: 560, duration: 350 }));
     }
 
     leave(c) {
@@ -146,7 +152,7 @@
       const S = FR.state;
       tb.cust = c; c.table = tb; c.state = 'seated';
       this.customers.push(c);
-      this.tweens.add({ targets: c.k, x: tb.x, y: tb.y - 46, duration: 400 });
+      this.tweens.add({ targets: c.k, x: tb.x, y: tb.y - 60, duration: 400 });
 
       const edibleNow = S.menu.map(FR.recipe).filter(r => FR.edible(c.species, r) && FR.canMakeCount(r) > 0);
       if (c.species.fantasyNerves && edibleNow.length && edibleNow.every(r => r.kind === 'fantasy')) c.rate = c.species.fantasyNerves;
@@ -166,7 +172,7 @@
       }
       if (!c.orders.length) {
         this.res.turned++;
-        U.float(this, tb.x, tb.y - 90, 'Everything is sold out!', '#ff9c9c');
+        U.float(this, tb.x, tb.y - HEAD, 'Everything is sold out!', '#ff9c9c');
         this.release(c);
         return;
       }
@@ -181,14 +187,31 @@
         }
       }
       if (c.regular) U.toast(this, `${c.regular.name}: "${FR.pick(c.regular.lines)}"`, '#ffe9a8');
-      if (c.returning && c.orders[0].payMult === 2) U.float(this, tb.x, tb.y - 96, 'Back for their request! Pays double', '#9cffb0');
+      if (c.returning && c.orders[0].payMult === 2) U.float(this, tb.x, tb.y - HEAD, 'Back for their request! Pays double', '#9cffb0');
       this.drawBubble(c);
       this.drawTickets();
     }
 
+    // Speech bubble: a little picture and the name of each dish they ordered.
     drawBubble(c) {
-      const lines = c.orders.map(o => (o.status === 'served' ? '✓ ' : '') + (o.live ? '★ Catch of\nthe moment' : o.recipe.name));
-      c.bubble.setText(lines.join('\n')).setVisible(true);
+      c.bub.removeAll(true);
+      const rows = [];
+      if (c.regular) rows.push({ t: c.regular.name, head: true });
+      c.orders.forEach(o => rows.push({ icon: o.live ? 'dish_live' : 'dish_' + o.recipe.id, t: (o.status === 'served' ? '✓ ' : '') + (o.live ? 'Catch of the moment' : o.recipe.name) }));
+      const texts = rows.map(r => U.text(this, 0, 0, r.t, 12, r.head ? '#b3262b' : '#2b2140', { fontStyle: 'bold' }));
+      const w = Math.max(...texts.map((t, i) => t.width + (rows[i].icon ? 26 : 0))) + 16, h = rows.length * 22 + 6;
+      const g = this.add.graphics();
+      g.fillStyle(0x2b2140, 1); g.fillRoundedRect(-w / 2 - 2, -h - 2, w + 4, h + 5, 10);
+      g.fillTriangle(-7, 2, 7, 2, 0, 10);
+      g.fillStyle(0xfffbe8, 1); g.fillRoundedRect(-w / 2, -h, w, h, 8);
+      g.fillTriangle(-5, -1, 5, -1, 0, 6);
+      c.bub.add(g);
+      rows.forEach((r, i) => {
+        const y = -h + 14 + i * 22;
+        let x = -w / 2 + 8;
+        if (r.icon) { c.bub.add(this.add.image(x + 10, y, r.icon).setScale(0.36)); x += 26; }
+        c.bub.add(texts[i].setPosition(x, y).setOrigin(0, 0.5));
+      });
     }
 
     // A customer is done (paid, walked out, or stormed off): free their table.
@@ -207,20 +230,23 @@
     // ---------- kitchen ----------
     drawTickets() {
       this.ticketC.removeAll(true);
-      let y = 218;
+      let y = 220;
       this.customers.forEach(c => c.orders.forEach(o => {
-        if (o.status !== 'pending' || o.started || y > 430) return;
+        if (o.status !== 'pending' || o.started || y > 400) return;
         const label = `Table ${c.table.i + 1}:  ${o.live ? '★ Catch of the moment' : o.recipe.name}`;
-        this.ticketC.add(U.button(this, 805, y, 256, 26, label, () => (o.live ? this.startLive(c, o) : this.startCook(c, o)), { color: o.live ? 0x7a4e9c : 0x2f6f8f, size: 13 }));
-        y += 30;
+        this.ticketC.add(U.button(this, 805, y, 256, 28, label, () => (o.live ? this.startLive(c, o) : this.startCook(c, o)), { color: o.live ? 0x7a4e9c : 0x2f6f8f, size: 13, icon: o.live ? 'dish_live' : 'dish_' + o.recipe.id }));
+        y += 35;
       }));
     }
 
     drawStation(st) {
       const ql = st.dish ? C.quality[st.dish.quality].label : '';
-      st.txt.setText(st.state === 'empty' ? 'empty' : st.state === 'busy' ? 'prepping…' : st.state === 'cooking' ? st.dish.recipe.name : `${st.dish.recipe.name}\n${ql} — READY`);
-      st.txt.setColor(st.state === 'ready' ? '#9cffb0' : '#cfe3f2');
-      st.box.setStrokeStyle(this.sel === st ? 4 : 2, this.sel === st ? 0xffe14d : 0x8fb3c9);
+      st.txt.setText(st.state === 'busy' ? 'prepping…' : st.state === 'cooking' ? 'cooking…' : st.state === 'ready' ? ql + ' ✓' : '');
+      st.txt.setColor(st.state === 'ready' ? (st.dish.quality === 'burnt' ? '#ff9c9c' : '#9cffb0') : '#cfe3f2');
+      st.dishImg.setVisible(!!st.dish);
+      if (st.dish) st.dishImg.setTexture('dish_' + st.dish.recipe.id).setAlpha(st.state === 'ready' ? 1 : 0.75);
+      if (st.dish && st.dish.quality === 'burnt' && st.state === 'ready') st.dishImg.setTint(0x6b5a4a); else st.dishImg.clearTint();
+      st.ring.setVisible(this.sel === st);
       st.bar.objs.forEach(o => o.setVisible(st.state === 'cooking'));
       st.bin.setVisible(st.state === 'ready');
     }
@@ -273,19 +299,19 @@
         clear();
         this.res.reviews.push(1);
         FR.sfx('bad');
-        U.float(this, c.table.x, c.table.y - 96, 'FISH?! How dare you! ★', '#ff9c9c');
+        U.float(this, c.table.x, c.table.y - HEAD, 'FISH?! How dare you! ★', '#ff9c9c');
         this.release(c);
       } else {
         this.sel = null;
         this.stations.forEach(s => this.drawStation(s));
         this.setTip();
-        U.float(this, c.table.x, c.table.y - 96, "That's not my order!", '#ffe9a8');
+        U.float(this, c.table.x, c.table.y - HEAD, "That's not my order!", '#ffe9a8');
       }
     }
 
     // ---------- paying ----------
     pay(c) {
-      const S = FR.state, x = c.table.x, y = c.table.y - 96;
+      const S = FR.state, x = c.table.x, y = c.table.y - HEAD;
       let pay = 0, tip = 0, worst = 5;
       c.orders.forEach(o => {
         const q = C.quality[o.quality];
@@ -331,9 +357,9 @@
       if (this.modal || this.ended) return;
       const panel = U.panel(this, 640, 400, 'Catch of the moment — the whole deck is watching!', 100);
       const th = D.themes[FR.state.theme];
-      panel.add(this.add.rectangle(0, 70, 600, 170, D.areas[FR.state.area].water));
-      panel.add(this.add.rectangle(-240, -30, 120, 40, th.deck).setStrokeStyle(3, th.trim));
-      panel.add(this.add.circle(-250, -62, 12, 0xe8b98a));
+      panel.add(this.add.image(0, 70, 'water_' + FR.state.area).setCrop(180, 0, 600, 170).setPosition(0, 130));
+      panel.add(this.add.rectangle(-240, -24, 124, 30, th.deck).setStrokeStyle(3, 0x2b2140));
+      panel.add(this.add.image(-250, -70, 'captain'));
       panel.add(U.text(this, 0, -150, 'Their patience keeps draining. A clean or rare catch thrills the crowd.', 13, '#ffffff').setOrigin(0.5));
       const rig = new FR.FishingRig(this, {
         depth: 110, tipX: 300, tipY: 250, waterY: 312, castMinX: 330, castMaxX: 770, hintX: 480, hintY: 490,
@@ -352,7 +378,7 @@
       this.liveOpen = false;
       o.status = 'served';
       if (c.state !== 'seated') return;
-      const x = c.table.x, y = c.table.y - 96;
+      const x = c.table.x, y = c.table.y - HEAD;
       const others = this.customers.filter(k => k !== c);
       if (!id) {
         FR.sfx('bad');
@@ -417,7 +443,7 @@
             this.leave(c);
             this.layoutQueue();
           } else {
-            U.float(this, c.table.x, c.table.y - 96, 'Too slow! ★', '#ff9c9c');
+            U.float(this, c.table.x, c.table.y - HEAD, 'Too slow! ★', '#ff9c9c');
             this.release(c);
           }
         }

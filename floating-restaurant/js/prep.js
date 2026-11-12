@@ -21,9 +21,8 @@
       this.tab = 'menu';
       this.mix = [];
       this.labMsg = '';
-      this.add.rectangle(480, 300, 960, 600, 0xf2c98a);
-      this.add.rectangle(480, 318, 960, 564, 0x21405a, 0.92);
-      this.add.rectangle(90, 318, 180, 564, 0x16324a);
+      FR.art.build(this);
+      this.add.image(480, 300, 'prepbg');
       this.hud = U.hud(this, 'Afternoon');
       this.content = this.add.container(0, 0);
       this.render();
@@ -31,6 +30,9 @@
 
     put(o) { this.content.add(o); return o; }
     label(x, y, str, size, color, extra) { return this.put(U.text(this, x, y, str, size || 14, color, extra)); }
+    head(str) { return this.put(U.title(this, 200, 46, str, 26)); }
+    card(x, y, w, h, color) { return this.put(U.card(this, x, y, w, h, color === undefined ? 0x1d3557 : color, 0.95)); }
+    img(x, y, key, scale) { return this.put(this.add.image(x, y, key).setScale(scale || 1)); }
     btn(x, y, w, h, label, cb, o) { return this.put(U.button(this, x, y, w, h, label, cb, o)); }
 
     buy(price, fn) {
@@ -47,9 +49,9 @@
       this.content.removeAll(true);
       this.hud.set('');
       TABS.forEach(([id, name], i) => {
-        this.btn(90, 76 + i * 46, 156, 38, name, () => { this.tab = id; this.render(); }, { color: this.tab === id ? 0xd9822b : 0x2f6f8f, size: 15 });
+        this.btn(90, 76 + i * 46, 156, 38, name, () => { this.tab = id; this.render(); }, { color: this.tab === id ? 0xe07a2f : 0x9c6b3f, size: 16 });
       });
-      this.label(90, 440, 'Tonight you seat\nabout ' + FR.customersTonight() + ' customers', 12, '#bfe3ff', { align: 'center' }).setOrigin(0.5);
+      this.label(90, 440, 'Tonight you seat\nabout ' + FR.customersTonight() + ' customers', 13, '#ffe9a8', { align: 'center' }).setOrigin(0.5);
       this.btn(90, 540, 156, 56, 'Open for\ndinner ▶', () => this.open(), { color: 0x3f8f4f, size: 16 });
       this['tab_' + this.tab](S);
     }
@@ -63,7 +65,7 @@
     // --- Menu ---
     tab_menu(S) {
       S.menu = S.menu.filter(id => S.known.includes(id)).slice(0, FR.menuSlots());
-      this.label(200, 52, `Tonight's menu: ${S.menu.length}/${FR.menuSlots()} dishes`, 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head(`Tonight's menu: ${S.menu.length}/${FR.menuSlots()} dishes`);
       this.label(200, 80, "Customers can only order what's on it. A dish sells out when you run out of its ingredients.", 13, '#dfefff');
       if (S.requests.length) {
         const names = S.requests.map(q => FR.recipe(q.recipe).name).join(', ');
@@ -71,11 +73,12 @@
       }
       S.known.map(FR.recipe).forEach((r, i) => {
         const y = 150 + i * 60, on = S.menu.includes(r.id), n = FR.canMakeCount(r);
-        this.put(this.add.rectangle(565, y, 740, 54, on ? 0x2c5f3a : 0x1a3349).setStrokeStyle(1, 0xffffff, 0.25));
-        this.label(210, y - 20, r.name, 17, '#ffffff', { fontStyle: 'bold' });
-        this.label(210, y + 3, `${ingredientText(r)}   ·   ${r.steps.map(s => D.steps[s].name).join(', ')}   ·   ${KIND[r.kind]}`, 12, '#cfe3f2');
-        this.label(620, y - 10, '$' + r.price, 18, '#ffe9a8', { fontStyle: 'bold' });
-        this.label(690, y - 8, n > 0 ? `can make ${n}` : 'SOLD OUT', 13, n > 0 ? '#ffffff' : '#ff9c9c');
+        this.card(565, y, 740, 54, on ? 0x2c6e49 : 0x1d3557);
+        this.img(228, y, 'dish_' + r.id, 0.72);
+        this.label(262, y - 21, r.name, 17, '#ffffff', { fontStyle: 'bold' });
+        this.label(262, y + 3, `${ingredientText(r)}   ·   ${r.steps.map(s => D.steps[s].name).join(', ')}   ·   ${KIND[r.kind]}`, 12, '#cfe3f2');
+        this.label(650, y - 12, '$' + r.price, 20, '#ffe9a8', { fontStyle: 'bold' });
+        this.label(705, y - 8, n > 0 ? `can make ${n}` : 'SOLD OUT', 13, n > 0 ? '#ffffff' : '#ff9c9c');
         this.btn(865, y, 120, 36, on ? 'On menu ✓' : 'Add', () => {
           if (on) S.menu = S.menu.filter(id => id !== r.id);
           else if (S.menu.length >= FR.menuSlots()) { U.toast(this, 'The menu is full. Take something off first.', '#ff9c9c'); return; }
@@ -87,7 +90,7 @@
 
     // --- Shop ---
     tab_shop(S) {
-      this.label(200, 52, 'Shop', 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head('Shop');
       this.label(200, 84, 'Side ingredients', 15, '#dfefff', { fontStyle: 'bold' });
       Object.keys(D.sides).forEach((id, i) => {
         const sd = D.sides[id], y = 124 + i * 40;
@@ -106,17 +109,18 @@
       if (!locked.length) this.label(210, 410, 'You know every recipe.', 14, '#9cffb0');
       locked.forEach((r, i) => {
         const y = 420 + i * 40;
-        this.label(210, y - 9, `${r.name}  —  sells for $${r.price}`, 15);
+        this.img(222, y, 'dish_' + r.id, 0.5);
+        this.label(246, y - 9, `${r.name}  —  sells for $${r.price}`, 15);
         this.btn(725, y, 110, 30, 'Buy $' + r.unlock, () => this.buy(r.unlock, () => { FR.unlockRecipe(r.id); }));
       });
     }
 
     // --- Upgrades ---
     tab_upgrades(S) {
-      this.label(200, 52, 'Boat upgrades', 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head('Boat upgrades');
       D.upgrades.forEach((u, i) => {
         const y = 112 + i * 62, lvl = S.upgrades[u.id], max = u.prices.length;
-        this.put(this.add.rectangle(565, y, 740, 54, 0x1a3349).setStrokeStyle(1, 0xffffff, 0.25));
+        this.card(565, y, 740, 54);
         this.label(210, y - 20, `${u.name}   (level ${lvl}/${max})`, 17, '#ffffff', { fontStyle: 'bold' });
         this.label(210, y + 4, u.desc, 13, '#cfe3f2');
         if (lvl >= max) this.btn(855, y, 140, 36, 'Maxed ✓', () => {}, { enabled: false });
@@ -151,11 +155,12 @@
 
     // --- Decor ---
     tab_decor(S) {
-      this.label(200, 52, 'Decor', 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head('Decor');
       this.label(200, 82, `Each item makes customers a little more patient (+${Math.round(C.decorPatienceBonus * 100)}% each).`, 13, '#dfefff');
       D.decor.forEach((d, i) => {
         const y = 136 + i * 54, own = !!S.decor[d.id];
-        this.put(this.add.rectangle(565, y, 740, 46, 0x1a3349).setStrokeStyle(1, 0xffffff, 0.25));
+        this.card(565, y, 740, 46);
+        this.img(660, y, { lanterns: 'lantern', plants: 'plant', sign: 'plank', tablestyle: 'table_fancy' }[d.id], { lanterns: 0.9, plants: 0.75, sign: 0.5, tablestyle: 0.6 }[d.id]);
         this.label(210, y - 10, d.name, 17, '#ffffff', { fontStyle: 'bold' });
         if (own) this.btn(855, y, 140, 32, 'Owned ✓', () => {}, { enabled: false });
         else this.btn(855, y, 140, 32, 'Buy $' + d.price, () => this.buy(d.price, () => { S.decor[d.id] = true; }), { color: 0x3f8f4f });
@@ -164,13 +169,13 @@
       Object.keys(D.themes).forEach((id, i) => {
         const th = D.themes[id], on = S.theme === id;
         this.btn(300 + i * 220, 420, 200, 44, th.name + (on ? ' ✓' : ''), () => { S.theme = id; this.render(); }, { color: on ? 0xd9822b : 0x2f6f8f, size: 16 });
-        this.put(this.add.rectangle(300 + i * 220, 470, 200, 24, th.deck).setStrokeStyle(3, th.trim));
+        this.img(300 + i * 220, 520, 'boat_' + id, 0.5);
       });
     }
 
     // --- Fish tank: see freshness and sell raw fish ---
     tab_tank(S) {
-      this.label(200, 52, `Fish tank  ${S.tank.length}/${FR.tankCap()}`, 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head(`Fish tank  ${S.tank.length}/${FR.tankCap()}`);
       this.label(200, 82, 'Fresh on day 1, OK on day 2, thrown out on day 3. Selling raw pays far less than cooking.', 13, '#dfefff');
       const groups = {};
       S.tank.forEach(f => {
@@ -182,9 +187,10 @@
       keys.slice(0, 10).forEach((k, i) => {
         const list = groups[k], f = list[0], y = 130 + i * 42, val = FR.rawValue(f);
         const cut = f.cut === 'perfect' ? 'Perfect cut' : f.cut === 'bruised' ? 'Bruised' : 'Normal';
-        this.put(this.add.ellipse(222, y, 26, 12, D.fish[f.id].color).setStrokeStyle(1, 0xffffff));
-        this.label(246, y - 9, `${D.fish[f.id].name} ×${list.length}`, 15, '#ffffff', { fontStyle: 'bold' });
-        this.label(470, y - 8, `${FR.freshness(f) === 'fresh' ? 'Fresh' : 'OK'}  ·  ${cut}`, 13, FR.freshness(f) === 'fresh' ? '#9cffb0' : '#ffe9a8');
+        this.card(565, y, 740, 38);
+        this.img(232, y, 'fish_' + f.id, 0.42);
+        this.label(270, y - 10, `${D.fish[f.id].name} ×${list.length}`, 15, '#ffffff', { fontStyle: 'bold' });
+        this.label(490, y - 8, `${FR.freshness(f) === 'fresh' ? 'Fresh' : 'OK'}  ·  ${cut}`, 13, FR.freshness(f) === 'fresh' ? '#9cffb0' : '#ffe9a8');
         const sell = fish => {
           fish.forEach(x => { S.money += FR.rawValue(x); });
           S.tank = S.tank.filter(x => !fish.includes(x));
@@ -198,7 +204,7 @@
 
     // --- Kitchen lab: mix ingredients to discover recipes ---
     tab_lab(S) {
-      this.label(200, 52, 'Kitchen lab', 20, '#ffe9a8', { fontStyle: 'bold' });
+      this.head('Kitchen lab');
       this.label(200, 82, 'Mix ingredients to discover a recipe. A failed mix still uses up the ingredients.', 13, '#dfefff');
       const used = id => this.mix.filter(m => m === id).length;
       const add = id => { if (this.mix.length < 4) { this.mix.push(id); this.labMsg = ''; this.render(); } };
@@ -216,7 +222,7 @@
       if (!i) this.label(210, 130, 'You have nothing to mix yet.', 15);
 
       const names = this.mix.map(m => { const [t, id] = m.split(':'); return t === 'fish' ? D.fish[id].name : D.sides[id].name; });
-      this.put(this.add.rectangle(565, 380, 740, 60, 0x1a3349).setStrokeStyle(1, 0xffffff, 0.25));
+      this.card(565, 380, 740, 60);
       this.label(565, 380, names.length ? names.join('  +  ') : 'Pick up to 4 ingredients above', 16, '#ffffff').setOrigin(0.5);
       this.btn(470, 450, 160, 40, 'Mix!', () => this.doMix(), { color: 0x3f8f4f, size: 16, enabled: this.mix.length > 0 });
       this.btn(660, 450, 160, 40, 'Clear', () => { this.mix = []; this.labMsg = ''; this.render(); });

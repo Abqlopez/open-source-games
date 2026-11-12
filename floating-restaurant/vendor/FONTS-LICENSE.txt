@@ -1,0 +1,2 @@
+Fredoka and Lilita One are licensed under the SIL Open Font License 1.1 (https://openfontlicense.org).
+Files from the @fontsource/fredoka and @fontsource/lilita-one npm packages.

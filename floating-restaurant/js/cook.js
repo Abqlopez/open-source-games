@@ -13,13 +13,13 @@
     constructor(...a) {
       super(...a);
       this.dur = 3.6; this.score = 0;
-      this.add(this.s.add.rectangle(0, 0, 420, 8, 0x5b4630));
+      this.add(this.s.add.image(0, 0, 'board'));
       this.marks = [0.9, 1.6, 2.3, 3.0].map(tm => {
-        const m = this.add(this.s.add.rectangle(this.x(tm), 0, 10, 46, 0xffffff));
+        const m = this.add(this.s.add.rectangle(this.x(tm), 0, 8, 50, 0xffffff).setStrokeStyle(2, 0x2b2140));
         m.tm = tm;
         return m;
       });
-      this.knife = this.add(this.s.add.triangle(this.x(0), -34, -10, -14, 10, -14, 0, 14, 0xd9e2ea).setStrokeStyle(1, 0x000000));
+      this.knife = this.add(this.s.add.image(this.x(0), -30, 'knife').setAngle(180));
     }
     x(t) { return -200 + 400 * t / this.dur; }
     update(dt, inp) {
@@ -48,7 +48,7 @@
     constructor(...a) {
       super(...a);
       this.zc = FR.rand(0.25, 0.75);
-      this.add(this.s.add.rectangle(0, 0, 400, 26, 0x3a2a1c).setStrokeStyle(2, 0xffffff, 0.5));
+      this.add(this.s.add.rectangle(0, 0, 400, 26, 0x3a2a1c).setStrokeStyle(3, 0x2b2140));
       this.add(this.s.add.rectangle(-200 + this.zc * 400, 0, 88, 26, 0x4caf50));
       this.add(this.s.add.rectangle(-200 + this.zc * 400, 0, 40, 26, 0x7dff8a));
       this.needle = this.add(this.s.add.rectangle(-200, 0, 6, 44, 0xffffff));
@@ -71,7 +71,7 @@
     constructor(...a) {
       super(...a);
       this.dur = 4; this.z = FR.rand(0.55, 0.78); this.zw = 0.16;
-      this.add(this.s.add.rectangle(0, 0, 400, 26, 0x1f3550).setStrokeStyle(2, 0xffffff, 0.5));
+      this.add(this.s.add.rectangle(0, 0, 400, 26, 0x1f3550).setStrokeStyle(3, 0x2b2140));
       this.add(this.s.add.rectangle(-200 + (this.z + this.zw / 2) * 400, 0, this.zw * 400, 26, 0x4caf50));
       this.fill = this.add(this.s.add.rectangle(-200, 0, 400, 14, 0xff8a3c).setOrigin(0, 0.5));
       this.fill.scaleX = 0.0001;
@@ -124,9 +124,8 @@
   class Plate extends Base {
     constructor(...a) {
       super(...a);
-      this.add(this.s.add.circle(130, 0, 58, 0xf4f4f4).setStrokeStyle(4, 0xb9c4cc));
-      this.add(this.s.add.circle(130, 0, 14, 0xdfe6ea));
-      this.food = this.add(this.s.add.circle(-150, 0, 22, 0xff8a3c).setStrokeStyle(2, 0xffffff));
+      this.add(this.s.add.image(130, 0, 'bigplate').setScale(0.95));
+      this.food = this.add(this.s.add.circle(-150, 0, 22, 0xff8a3c).setStrokeStyle(3, 0x2b2140));
       this.drag = false;
     }
     update(dt, inp) {
@@ -161,6 +160,7 @@
     constructor(scene, recipe, onDone) {
       this.s = scene; this.recipe = recipe; this.onDone = onDone;
       this.panel = U.panel(scene, 560, 290, 'Cooking: ' + recipe.name, 100);
+      this.panel.add(scene.add.image(-236, -122, 'dish_' + recipe.id).setScale(0.8));
       this.stepText = U.text(scene, 0, -82, '', 15, '#ffffff', { align: 'center' }).setOrigin(0.5);
       this.result = U.text(scene, 0, 118, '', 16, '#9cffb0', { fontStyle: 'bold' }).setOrigin(0.5);
       this.panel.add([this.stepText, this.result]);
